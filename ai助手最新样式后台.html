@@ -47,14 +47,20 @@
         </div>
       </div>
 
-      <!-- 连接状态提示区域 -->
-      <div id="ai-connection-status">
+      <!-- 秘钥输入区域 -->
+      <div id="ai-api-key-section">
         <div style="width: 100%;">
-          <div style="display: flex; align-items: center; gap: 8px; color: #555;">
-            <span style="font-size: 16px;">🔗</span>
-            <span style="font-size: 13px; font-weight: 500;">后台连接状态</span>
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: #555;">
+            <span style="font-size: 16px;">🔑</span>
+            <span style="font-size: 13px; font-weight: 500;">输入访问秘钥</span>
           </div>
-          <div class="connection-status" id="connection-status">正在连接后台服务...</div>
+          <div style="display: flex; gap: 10px;">
+            <input type="password" id="ai-api-key" placeholder="请输入秘钥..." />
+            <button onclick="saveApiKey()">
+              <span style="font-size: 16px;">✓</span>
+            </button>
+          </div>
+          <div class="api-key-status" id="api-key-status">请输入秘钥以连接服务</div>
         </div>
       </div>
 
@@ -125,31 +131,71 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* ---------- 连接状态样式 ---------- */
-    #ai-connection-status {
-      padding: 15px 20px;
+    /* ---------- 秘钥输入区域样式 ---------- */
+    #ai-api-key-section {
+      padding: 20px;
       background: linear-gradient(to bottom, #f8f9ff 0%, #ffffff 100%);
       border-bottom: 1px solid #e0e7ff;
     }
 
-    .connection-status {
-      font-size: 12px;
+    #ai-api-key {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid #e0e7ff;
+      border-radius: 12px;
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      transition: all 0.3s;
+      background: white;
+    }
+
+    #ai-api-key:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    #ai-api-key-section button {
+      padding: 12px 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    #ai-api-key-section button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+    }
+
+    #ai-api-key-section button:disabled {
+      background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%);
+      cursor: not-allowed;
+    }
+
+    .api-key-status {
+      font-size: 11px;
       color: #666;
-      margin-top: 5px;
+      margin-top: 8px;
       display: flex;
       align-items: center;
       gap: 5px;
     }
 
-    .connection-status.success {
+    .api-key-status.success {
       color: #4caf50;
     }
 
-    .connection-status.error {
+    .api-key-status.error {
       color: #f44336;
     }
 
-    .connection-status.loading {
+    .api-key-status.loading {
       color: #ff9800;
     }
 
@@ -441,7 +487,9 @@
       // 获取上下文数据接口
       CONTEXT_ENDPOINT: '/context',
       // 健康检查接口
-      HEALTH_ENDPOINT: '/health'
+      HEALTH_ENDPOINT: '/health',
+      // 验证秘钥接口
+      VERIFY_KEY_ENDPOINT: '/verify'
     };
 
     // 消息长度限制
@@ -456,6 +504,8 @@
     let isInitialized = false;
     let isBackendConnected = false;
     let contextData = null;
+    // 访问秘钥
+    let accessKey = localStorage.getItem('ai_access_key') || '';
 
     // 问题关键词列表
     const displayKeywords = ['细胞', '基因', '类型', '注释', '聚类', '细胞群', '通讯', '通信', '信号', '总结', '发现', '分析'];
@@ -490,16 +540,56 @@
       paragraph.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
-    // ========== 连接状态更新 ==========
-    function updateConnectionStatus(message, status) {
-      const statusElement = document.getElementById('connection-status');
+    // ========== 秘钥状态更新 ==========
+    function updateApiKeyStatus(message, status) {
+      const statusElement = document.getElementById('api-key-status');
       if (statusElement) {
         statusElement.textContent = message;
-        statusElement.className = 'connection-status ' + status;
+        statusElement.className = 'api-key-status ' + status;
       }
     }
 
-    // ========== 后台API调用 ==========
+    // ========== 后台API调用（带秘钥验证） ==========
+
+    /**
+     * 获取请求头（包含秘钥）
+     */
+    function getAuthHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'X-Access-Key': accessKey,
+        'Authorization': `Bearer ${accessKey}`
+      };
+    }
+
+    /**
+     * 验证秘钥是否有效
+     */
+    async function verifyAccessKey(key) {
+      try {
+        const response = await fetch(`${API_CONFIG.BACKEND_URL}${API_CONFIG.VERIFY_KEY_ENDPOINT}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Access-Key': key,
+            'Authorization': `Bearer ${key}`
+          },
+          body: JSON.stringify({ key: key })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          return { valid: true, message: data.message || '验证成功' };
+        } else if (response.status === 401 || response.status === 403) {
+          return { valid: false, message: '秘钥无效或已过期' };
+        } else {
+          return { valid: false, message: '验证失败: ' + response.status };
+        }
+      } catch (error) {
+        console.error('Verify key failed:', error);
+        return { valid: false, message: '网络错误，请稍后重试' };
+      }
+    }
 
     /**
      * 检查后台服务健康状态
@@ -508,7 +598,7 @@
       try {
         const response = await fetch(`${API_CONFIG.BACKEND_URL}${API_CONFIG.HEALTH_ENDPOINT}`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
+          headers: getAuthHeaders()
         });
         return response.ok;
       } catch (error) {
@@ -524,8 +614,12 @@
       try {
         const response = await fetch(`${API_CONFIG.BACKEND_URL}${API_CONFIG.CONTEXT_ENDPOINT}`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
+          headers: getAuthHeaders()
         });
+
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('秘钥验证失败');
+        }
 
         if (!response.ok) {
           throw new Error('获取上下文数据失败');
@@ -544,12 +638,18 @@
     async function sendChatToBackend(messages) {
       const response = await fetch(`${API_CONFIG.BACKEND_URL}${API_CONFIG.CHAT_ENDPOINT}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           messages: messages,
           stream: true
         })
       });
+
+      if (response.status === 401 || response.status === 403) {
+        // 秘钥失效，重新显示输入区域
+        showApiKeySection();
+        throw new Error('秘钥验证失败，请重新输入');
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -559,18 +659,70 @@
       return response;
     }
 
+    // ========== 秘钥管理 ==========
+
+    /**
+     * 显示秘钥输入区域
+     */
+    function showApiKeySection() {
+      document.getElementById('ai-api-key-section').style.display = 'block';
+      isBackendConnected = false;
+      isInitialized = false;
+    }
+
+    /**
+     * 隐藏秘钥输入区域
+     */
+    function hideApiKeySection() {
+      document.getElementById('ai-api-key-section').style.display = 'none';
+    }
+
+    /**
+     * 保存并验证秘钥
+     */
+    async function saveApiKey() {
+      const apiKeyInput = document.getElementById('ai-api-key');
+      const saveBtn = apiKeyInput.nextElementSibling;
+      const inputKey = apiKeyInput.value.trim();
+
+      if (!inputKey) {
+        updateApiKeyStatus('请输入秘钥', 'error');
+        return;
+      }
+
+      // 禁用输入
+      saveBtn.disabled = true;
+      apiKeyInput.disabled = true;
+      updateApiKeyStatus('正在验证秘钥...', 'loading');
+
+      // 验证秘钥
+      const result = await verifyAccessKey(inputKey);
+
+      if (result.valid) {
+        // 保存秘钥
+        accessKey = inputKey;
+        localStorage.setItem('ai_access_key', accessKey);
+        updateApiKeyStatus('验证成功，正在加载...', 'success');
+
+        // 初始化连接
+        await initializeConnection();
+      } else {
+        updateApiKeyStatus(result.message, 'error');
+        saveBtn.disabled = false;
+        apiKeyInput.disabled = false;
+      }
+    }
+
     // ========== 聊天历史初始化 ==========
     function initializeChatHistory() {
       if (!contextData) return [];
 
       const history = [];
 
-      // 添加系统角色提示
       if (contextData.system) {
         history.push({ role: 'system', content: contextData.system });
       }
 
-      // 遍历上下文数据
       if (contextData.context) {
         for (const key1 in contextData.context) {
           for (const key2 in contextData.context[key1]) {
@@ -583,7 +735,6 @@
         }
       }
 
-      // 添加回答指令
       if (contextData.instructions) {
         history.push({ role: 'system', content: contextData.instructions });
       }
@@ -600,36 +751,55 @@
       chatHistory = initializeChatHistory();
       isInitialized = true;
 
-      // 隐藏连接状态区域
-      document.getElementById('ai-connection-status').style.display = 'none';
+      // 隐藏秘钥输入区域
+      hideApiKeySection();
       // 显示欢迎消息
       addMessage(WELCOME_MESSAGE, 'bot');
     }
 
-    // ========== 页面加载事件 ==========
-    window.addEventListener('load', async function () {
-      updateConnectionStatus('正在连接后台服务...', 'loading');
-
+    /**
+     * 初始化连接
+     */
+    async function initializeConnection() {
       try {
-        // 检查后台健康状态
-        const isHealthy = await checkBackendHealth();
-        if (!isHealthy) {
-          throw new Error('后台服务不可用');
-        }
-
         // 获取上下文数据
-        updateConnectionStatus('正在加载数据...', 'loading');
         contextData = await fetchContextData();
 
         // 初始化聊天
         isBackendConnected = true;
-        updateConnectionStatus('已连接', 'success');
         await initializeChat();
 
       } catch (error) {
         console.error('Initialization failed:', error);
-        updateConnectionStatus('连接失败: ' + error.message, 'error');
+        updateApiKeyStatus('连接失败: ' + error.message, 'error');
         isBackendConnected = false;
+
+        // 重新启用输入
+        const apiKeyInput = document.getElementById('ai-api-key');
+        const saveBtn = apiKeyInput.nextElementSibling;
+        saveBtn.disabled = false;
+        apiKeyInput.disabled = false;
+      }
+    }
+
+    // ========== 页面加载事件 ==========
+    window.addEventListener('load', async function () {
+      // 检查是否有保存的秘钥
+      if (accessKey) {
+        updateApiKeyStatus('正在验证已保存的秘钥...', 'loading');
+        document.getElementById('ai-api-key').value = accessKey;
+
+        // 验证已保存的秘钥
+        const result = await verifyAccessKey(accessKey);
+
+        if (result.valid) {
+          updateApiKeyStatus('验证成功，正在加载...', 'success');
+          await initializeConnection();
+        } else {
+          updateApiKeyStatus('秘钥已失效，请重新输入', 'error');
+          localStorage.removeItem('ai_access_key');
+          accessKey = '';
+        }
       }
     });
 
@@ -692,8 +862,8 @@
 
     function getFriendlyErrorMessage(error) {
       const msg = error.message || '';
-      if (msg.includes('401') || msg.includes('Unauthorized')) {
-        return '认证失败，请联系管理员';
+      if (msg.includes('401') || msg.includes('403') || msg.includes('秘钥')) {
+        return '秘钥验证失败，请重新输入';
       } else if (msg.includes('429')) {
         return '请求过于频繁，请稍后再试';
       } else if (msg.includes('500') || msg.includes('502') || msg.includes('503')) {
@@ -721,9 +891,17 @@
      * 发送消息到后台API（流式输出）
      */
     async function sendMessage() {
+      // 检查秘钥
+      if (!accessKey) {
+        addMessage('请先输入访问秘钥', 'error');
+        showApiKeySection();
+        return;
+      }
+
       // 检查后台连接
       if (!isBackendConnected) {
-        addMessage('后台服务未连接，请刷新页面重试', 'error');
+        addMessage('后台服务未连接，请检查秘钥', 'error');
+        showApiKeySection();
         return;
       }
 
@@ -813,6 +991,13 @@
         addMessage(friendlyMsg, 'error');
         console.error('Backend API Error:', error);
 
+        // 如果是认证错误，显示秘钥输入
+        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('秘钥')) {
+          showApiKeySection();
+          localStorage.removeItem('ai_access_key');
+          accessKey = '';
+        }
+
       } finally {
         sendBtn.disabled = false;
         userInput.disabled = false;
@@ -821,8 +1006,9 @@
     }
 
     function askDefaultQuestion(question) {
-      if (!isBackendConnected) {
-        addMessage('后台服务未连接，请刷新页面重试', 'error');
+      if (!accessKey || !isBackendConnected) {
+        addMessage('请先输入访问秘钥', 'error');
+        showApiKeySection();
         return;
       }
       document.getElementById('ai-user-input').value = question;
@@ -837,6 +1023,17 @@
           if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             sendMessage();
+          }
+        });
+      }
+
+      // 秘钥输入框回车提交
+      const apiKeyInput = document.getElementById('ai-api-key');
+      if (apiKeyInput) {
+        apiKeyInput.addEventListener('keypress', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            saveApiKey();
           }
         });
       }

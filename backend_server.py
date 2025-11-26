@@ -41,6 +41,9 @@ DEBUG_MODE = os.environ.get('DEBUG_MODE', 'false').lower() == 'true'
 # 上下文数据文件路径（可配置）
 CONTEXT_FILE_PATH = os.environ.get('CONTEXT_FILE_PATH', 'context_data.json')
 
+# 访问秘钥配置（可以设置多个秘钥，用逗号分隔）
+VALID_ACCESS_KEYS = os.environ.get('VALID_ACCESS_KEYS', 'demo-key-123').split(',')
+
 # ==================== 上下文数据 ====================
 
 # 默认上下文数据（如果没有配置文件，使用此默认数据）
@@ -186,7 +189,74 @@ def decode_base64_context(base64_str):
         return None
 
 
+# ==================== 秘钥验证 ====================
+
+def verify_access_key(key):
+    """
+    验证访问秘钥是否有效
+    """
+    if not key:
+        return False
+    return key.strip() in [k.strip() for k in VALID_ACCESS_KEYS]
+
+
+def get_access_key_from_request():
+    """
+    从请求中获取访问秘钥
+    支持从 X-Access-Key 头部或 Authorization Bearer 头部获取
+    """
+    # 优先从 X-Access-Key 头部获取
+    key = request.headers.get('X-Access-Key')
+    if key:
+        return key.strip()
+
+    # 从 Authorization Bearer 头部获取
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        return auth_header[7:].strip()
+
+    return None
+
+
+def require_auth(f):
+    """
+    装饰器：要求访问秘钥验证
+    """
+    from functools import wraps
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        key = get_access_key_from_request()
+        if not verify_access_key(key):
+            return jsonify({"error": "访问秘钥无效或未提供"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 # ==================== API 接口 ====================
+
+@app.route('/api/verify', methods=['POST'])
+def verify_key():
+    """
+    验证访问秘钥接口
+    用于前端验证用户输入的秘钥是否有效
+    """
+    key = get_access_key_from_request()
+
+    # 也可以从请求体获取
+    if not key and request.json:
+        key = request.json.get('key', '')
+
+    if verify_access_key(key):
+        return jsonify({
+            "valid": True,
+            "message": "验证成功"
+        }), 200
+    else:
+        return jsonify({
+            "valid": False,
+            "message": "秘钥无效或已过期"
+        }), 401
+
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -205,6 +275,7 @@ def health_check():
 
 
 @app.route('/api/context', methods=['GET'])
+@require_auth
 def get_context():
     """
     获取上下文数据接口
@@ -226,6 +297,7 @@ def get_context():
 
 
 @app.route('/api/chat', methods=['POST'])
+@require_auth
 def chat():
     """
     聊天接口（流式响应）
@@ -310,6 +382,7 @@ def chat():
 
 
 @app.route('/api/chat/sync', methods=['POST'])
+@require_auth
 def chat_sync():
     """
     同步聊天接口（非流式）

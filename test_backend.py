@@ -13,6 +13,18 @@ import sys
 # 后台服务地址
 BASE_URL = "http://localhost:8100/api"
 
+# 测试用的访问秘钥（需要与后台配置的 VALID_ACCESS_KEYS 一致）
+TEST_ACCESS_KEY = "demo-key-123"
+
+
+def get_auth_headers():
+    """获取带认证的请求头"""
+    return {
+        "Content-Type": "application/json",
+        "X-Access-Key": TEST_ACCESS_KEY,
+        "Authorization": f"Bearer {TEST_ACCESS_KEY}"
+    }
+
 def test_health():
     """测试健康检查接口"""
     print("=" * 50)
@@ -38,14 +50,61 @@ def test_health():
         return False
 
 
-def test_context():
-    """测试获取上下文接口"""
+def test_verify_key():
+    """测试秘钥验证接口"""
     print("\n" + "=" * 50)
-    print("2. 测试获取上下文接口 GET /api/context")
+    print("2. 测试秘钥验证接口 POST /api/verify")
     print("=" * 50)
 
     try:
-        response = requests.get(f"{BASE_URL}/context", timeout=5)
+        # 测试有效秘钥
+        print("测试有效秘钥...")
+        response = requests.post(
+            f"{BASE_URL}/verify",
+            headers=get_auth_headers(),
+            json={"key": TEST_ACCESS_KEY},
+            timeout=5
+        )
+        print(f"状态码: {response.status_code}")
+
+        if response.status_code == 200:
+            data = response.json()
+            print(f"验证结果: {data.get('message', '')}")
+            print("✅ 有效秘钥验证通过")
+        else:
+            print(f"❌ 有效秘钥验证失败: {response.text}")
+            return False
+
+        # 测试无效秘钥
+        print("\n测试无效秘钥...")
+        response = requests.post(
+            f"{BASE_URL}/verify",
+            headers={"Content-Type": "application/json", "X-Access-Key": "invalid-key"},
+            json={"key": "invalid-key"},
+            timeout=5
+        )
+        print(f"状态码: {response.status_code}")
+
+        if response.status_code == 401:
+            print("✅ 无效秘钥正确返回401")
+            return True
+        else:
+            print(f"❌ 无效秘钥应返回401，实际: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"❌ 错误: {e}")
+        return False
+
+
+def test_context():
+    """测试获取上下文接口"""
+    print("\n" + "=" * 50)
+    print("3. 测试获取上下文接口 GET /api/context")
+    print("=" * 50)
+
+    try:
+        response = requests.get(f"{BASE_URL}/context", headers=get_auth_headers(), timeout=5)
         print(f"状态码: {response.status_code}")
 
         if response.status_code == 200:
@@ -66,7 +125,7 @@ def test_context():
 def test_chat_sync():
     """测试同步聊天接口"""
     print("\n" + "=" * 50)
-    print("3. 测试同步聊天接口 POST /api/chat/sync")
+    print("4. 测试同步聊天接口 POST /api/chat/sync")
     print("=" * 50)
 
     try:
@@ -77,6 +136,7 @@ def test_chat_sync():
 
         response = requests.post(
             f"{BASE_URL}/chat/sync",
+            headers=get_auth_headers(),
             json={"messages": messages},
             timeout=30
         )
@@ -99,7 +159,7 @@ def test_chat_sync():
 def test_chat_stream():
     """测试流式聊天接口"""
     print("\n" + "=" * 50)
-    print("4. 测试流式聊天接口 POST /api/chat")
+    print("5. 测试流式聊天接口 POST /api/chat")
     print("=" * 50)
 
     try:
@@ -110,6 +170,7 @@ def test_chat_stream():
 
         response = requests.post(
             f"{BASE_URL}/chat",
+            headers=get_auth_headers(),
             json={"messages": messages, "stream": True},
             stream=True,
             timeout=30
@@ -154,6 +215,9 @@ def main():
 
     # 测试健康检查
     results.append(("健康检查", test_health()))
+
+    # 测试秘钥验证
+    results.append(("秘钥验证", test_verify_key()))
 
     # 测试获取上下文
     results.append(("获取上下文", test_context()))
