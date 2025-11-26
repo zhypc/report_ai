@@ -955,7 +955,7 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
     }
 
     /**
-     * 发送消息到DeepSeek API
+     * 发送消息到DeepSeek API（流式输出）
      * 主要的聊天逻辑函数
      */
     async function sendMessage() {
@@ -998,11 +998,19 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
       sendBtn.disabled = true;
       userInput.disabled = true;
 
-      // 显示加载中消息
-      const loadingMsg = addMessage('正在思考中...', 'loading');
+      // 创建AI回复消息元素（用于流式更新）
+      const messagesDiv = document.getElementById('ai-chat-messages');
+      const botMessageDiv = document.createElement('div');
+      botMessageDiv.className = 'ai-message ai-bot-message';
+      botMessageDiv.textContent = '';
+      messagesDiv.appendChild(botMessageDiv);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+      // 用于累积完整回复
+      let fullResponse = '';
 
       try {
-        // 调用DeepSeek API
+        // 调用DeepSeek API（流式模式）
         const response = await fetch(`${API_CONFIG.BASE_URL}/chat/completions`, {
           method: 'POST',
           headers: {
@@ -1013,7 +1021,8 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
             model: API_CONFIG.MODEL,
             messages: chatHistory,
             temperature: API_CONFIG.TEMPERATURE,
-            max_tokens: API_CONFIG.MAX_TOKENS
+            max_tokens: API_CONFIG.MAX_TOKENS,
+            stream: true  // 启用流式输出
           })
         });
 
@@ -1023,30 +1032,66 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
           throw new Error(errorData.error?.message || '请求失败: ' + response.status);
         }
 
-        // 解析响应数据
-        const data = await response.json();
-        const assistantMessage = data.choices[0].message.content;
+        // 读取流式响应
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
 
-        // 添加AI回复到界面和历史记录
-        addMessage(assistantMessage, 'bot');
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // 解码数据块
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            // 跳过空行
+            if (!line.trim()) continue;
+
+            // 跳过注释行
+            if (line.startsWith(':')) continue;
+
+            // 处理 data: 前缀
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+
+              // 检查是否结束
+              if (data === '[DONE]') {
+                break;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                const content = parsed.choices?.[0]?.delta?.content || '';
+                if (content) {
+                  fullResponse += content;
+                  botMessageDiv.textContent = fullResponse;
+                  // 滚动到最新内容
+                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                }
+              } catch (e) {
+                // 忽略解析错误（可能是不完整的JSON）
+              }
+            }
+          }
+        }
+
+        // 添加完整回复到历史记录
         chatHistory.push({
           role: 'assistant',
-          content: assistantMessage
+          content: fullResponse
         });
 
         // 限制聊天历史长度
         trimChatHistory();
 
         // 根据问题关键词将AI回答展示到页面主体
-        displayResultByQuestion(currentQuestion, assistantMessage);
-
-        // 移除加载中消息
-        loadingMsg.remove();
+        displayResultByQuestion(currentQuestion, fullResponse);
 
       } catch (error) {
-        // 移除加载中消息
-        if (document.getElementById('loading-message')) {
-          document.getElementById('loading-message').remove();
+        // 如果还没有内容，删除空的消息元素
+        if (!fullResponse) {
+          botMessageDiv.remove();
         }
 
         // 显示友好的错误消息
