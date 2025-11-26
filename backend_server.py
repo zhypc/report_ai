@@ -22,6 +22,17 @@ import requests
 from flask import Flask, request, Response, jsonify
 from flask_cors import CORS
 
+# 数据库支持（可选，根据需要启用）
+DB_TYPE = os.environ.get('DB_TYPE', 'file')  # file, mysql, sqlite
+
+if DB_TYPE == 'mysql':
+    import pymysql
+    pymysql.install_as_MySQLdb()
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.pool import QueuePool
+elif DB_TYPE == 'sqlite':
+    import sqlite3
+
 app = Flask(__name__)
 # 启用跨域支持
 CORS(app)
@@ -43,6 +54,28 @@ CONTEXT_FILE_PATH = os.environ.get('CONTEXT_FILE_PATH', 'context_data.json')
 
 # 访问秘钥配置（可以设置多个秘钥，用逗号分隔）
 VALID_ACCESS_KEYS = os.environ.get('VALID_ACCESS_KEYS', 'demo-key-123').split(',')
+
+# ==================== 数据库配置 ====================
+
+# MySQL 配置
+MYSQL_HOST = os.environ.get('MYSQL_HOST', 'localhost')
+MYSQL_PORT = int(os.environ.get('MYSQL_PORT', 3306))
+MYSQL_USER = os.environ.get('MYSQL_USER', 'root')
+MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD', '')
+MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE', 'ai_assistant')
+
+# SQLite 配置
+SQLITE_PATH = os.environ.get('SQLITE_PATH', 'report_context.db')
+
+# 数据库连接池（MySQL）
+db_engine = None
+if DB_TYPE == 'mysql':
+    try:
+        db_url = f"mysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}?charset=utf8mb4"
+        db_engine = create_engine(db_url, poolclass=QueuePool, pool_size=5, max_overflow=10)
+        print(f"MySQL connection pool created: {MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DATABASE}")
+    except Exception as e:
+        print(f"Failed to create MySQL connection: {e}")
 
 # ==================== 上下文数据 ====================
 
@@ -159,7 +192,7 @@ DEFAULT_CONTEXT_DATA = {
             }
         }
     },
-    "instructions": "回答问题时要考虑报告内容，对于超出范围的问题要明确告知用户，回答问题不要使用Markdown格式。"
+    "instructions": "回答问题时必须严格遵守以下规则：\n1. 必须基于上述报告内容回答问题，对于超出报告范围的问题要明确告知用户\n2. 【格式要求-必须遵守】回答必须使用纯文本格式，严禁使用任何Markdown语法，包括但不限于：**加粗**、*斜体*、# 标题、- 列表符号、1. 数字列表、``` 代码块、> 引用、[链接]() 等\n3. 使用普通的换行和空格来组织内容结构\n4. 回答要简洁准确，直接针对用户的问题"
 }
 
 
@@ -175,6 +208,122 @@ def load_context_data():
         except Exception as e:
             print(f"Warning: Failed to load context file: {e}")
     return DEFAULT_CONTEXT_DATA
+
+
+def load_context_from_mysql(report_id):
+    """
+    从 MySQL 数据库加载上下文数据
+
+    Args:
+        report_id: 报告唯一标识
+
+    Returns:
+        dict: 上下文数据，如果未找到返回 None
+    """
+    if not db_engine:
+        print("MySQL connection not available")
+        return None
+
+    try:
+        with db_engine.connect() as conn:
+            query = text("""
+                SELECT system_prompt, context_data, instructions, project_name
+                FROM report_context
+                WHERE report_id = :report_id AND is_active = 1
+                LIMIT 1
+            """)
+            result = conn.execute(query, {"report_id": report_id}).fetchone()
+
+            if result:
+                system_prompt, context_data, instructions, project_name = result
+
+                # context_data 可能是 JSON 字符串或已解析的 dict
+                if isinstance(context_data, str):
+                    context_data = json.loads(context_data)
+
+                return {
+                    "system": system_prompt or DEFAULT_CONTEXT_DATA["system"],
+                    "context": context_data or {},
+                    "instructions": instructions or DEFAULT_CONTEXT_DATA["instructions"]
+                }
+
+            return None
+
+    except Exception as e:
+        print(f"MySQL query error: {e}")
+        return None
+
+
+def load_context_from_sqlite(report_id):
+    """
+    从 SQLite 数据库加载上下文数据
+
+    Args:
+        report_id: 报告唯一标识
+
+    Returns:
+        dict: 上下文数据，如果未找到返回 None
+    """
+    if not os.path.exists(SQLITE_PATH):
+        print(f"SQLite database not found: {SQLITE_PATH}")
+        return None
+
+    try:
+        conn = sqlite3.connect(SQLITE_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT system_prompt, context_data, instructions, project_name
+            FROM report_context
+            WHERE report_id = ? AND is_active = 1
+            LIMIT 1
+        """, (report_id,))
+
+        result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            system_prompt, context_data, instructions, project_name = result
+
+            # context_data 是 JSON 字符串
+            if isinstance(context_data, str):
+                context_data = json.loads(context_data)
+
+            return {
+                "system": system_prompt or DEFAULT_CONTEXT_DATA["system"],
+                "context": context_data or {},
+                "instructions": instructions or DEFAULT_CONTEXT_DATA["instructions"]
+            }
+
+        return None
+
+    except Exception as e:
+        print(f"SQLite query error: {e}")
+        return None
+
+
+def load_context_by_report_id(report_id):
+    """
+    根据报告ID加载上下文数据（统一入口）
+
+    Args:
+        report_id: 报告唯一标识
+
+    Returns:
+        dict: 上下文数据
+    """
+    context_data = None
+
+    if DB_TYPE == 'mysql':
+        context_data = load_context_from_mysql(report_id)
+    elif DB_TYPE == 'sqlite':
+        context_data = load_context_from_sqlite(report_id)
+
+    # 如果数据库中未找到，尝试从文件加载
+    if context_data is None:
+        context_data = load_context_data()
+
+    return context_data
 
 
 def decode_base64_context(base64_str):
@@ -286,13 +435,12 @@ def get_context():
     """
     report_id = request.args.get('report_id')
 
-    # 如果指定了报告ID，可以从数据库或文件系统加载对应数据
-    if report_id:
-        # TODO: 根据 report_id 加载对应的上下文数据
-        # context_data = load_context_by_report_id(report_id)
-        pass
+    # 根据数据源类型加载上下文
+    if report_id and DB_TYPE in ('mysql', 'sqlite'):
+        context_data = load_context_by_report_id(report_id)
+    else:
+        context_data = load_context_data()
 
-    context_data = load_context_data()
     return jsonify(context_data)
 
 

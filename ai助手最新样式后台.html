@@ -507,6 +507,10 @@
     // 访问秘钥
     let accessKey = localStorage.getItem('ai_access_key') || '';
 
+    // ========== 报告配置（生成报告时自动填入） ==========
+    // 报告唯一标识，用于从数据库获取对应的上下文数据
+    const REPORT_ID = 'LUAD_2025_001';  // 生成报告时替换为实际的report_id
+
     // 问题关键词列表
     const displayKeywords = ['细胞', '基因', '类型', '注释', '聚类', '细胞群', '通讯', '通信', '信号', '总结', '发现', '分析'];
 
@@ -612,7 +616,13 @@
      */
     async function fetchContextData() {
       try {
-        const response = await fetch(`${API_CONFIG.BACKEND_URL}${API_CONFIG.CONTEXT_ENDPOINT}`, {
+        // 使用页面内嵌的REPORT_ID获取对应的上下文数据
+        let url = `${API_CONFIG.BACKEND_URL}${API_CONFIG.CONTEXT_ENDPOINT}`;
+        if (REPORT_ID) {
+          url += `?report_id=${encodeURIComponent(REPORT_ID)}`;
+        }
+
+        const response = await fetch(url, {
           method: 'GET',
           headers: getAuthHeaders()
         });
@@ -719,25 +729,36 @@
 
       const history = [];
 
+      // 构建完整的 system prompt（合并为一条消息，让指令更突出）
+      let systemContent = '';
+
+      // 1. 角色设定
       if (contextData.system) {
-        history.push({ role: 'system', content: contextData.system });
+        systemContent += contextData.system + '\n\n';
       }
 
+      // 2. 报告上下文数据
       if (contextData.context) {
+        systemContent += '=== 报告数据 ===\n';
         for (const key1 in contextData.context) {
           for (const key2 in contextData.context[key1]) {
             let info = contextData.context[key1][key2];
             if (typeof info === 'object') {
               info = JSON.stringify(info, null, 2);
             }
-            history.push({ role: 'system', content: info });
+            systemContent += info + '\n\n';
           }
         }
       }
 
+      // 3. 回答指令（放在最后，强调格式要求）
       if (contextData.instructions) {
-        history.push({ role: 'system', content: contextData.instructions });
+        systemContent += '=== 回答要求 ===\n';
+        systemContent += contextData.instructions;
       }
+
+      // 合并为单条 system 消息
+      history.push({ role: 'system', content: systemContent });
 
       return history;
     }
