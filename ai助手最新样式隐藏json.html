@@ -49,6 +49,13 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
 
       <div id="ai-chat-messages"></div>
 
+      <div id="ai-default-questions">
+        <div class="default-questions-title">您可以这样问我：</div>
+        <div class="default-question-btn" onclick="askDefaultQuestion('这份报告分析了多少个细胞和基因？')">这份报告分析了多少个细胞和基因？</div>
+        <div class="default-question-btn" onclick="askDefaultQuestion('报告中识别了哪些细胞类型？')">报告中识别了哪些细胞类型？</div>
+        <div class="default-question-btn" onclick="askDefaultQuestion('请总结一下这份报告的主要发现')">请总结一下这份报告的主要发现</div>
+      </div>
+
       <div id="ai-chat-input-section">
         <textarea id="ai-user-input" placeholder="💭 请输入您的问题..." rows="3"></textarea>
         <button id="ai-send-btn" onclick="sendMessage()">
@@ -330,6 +337,40 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
       display: flex;
       gap: 12px;
       box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    #ai-default-questions {
+      padding: 12px 20px;
+      background: linear-gradient(to bottom, #f5f7ff 0%, #fafbff 100%);
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .default-questions-title {
+      font-size: 12px;
+      color: #718096;
+      margin-bottom: 10px;
+      font-weight: 500;
+    }
+
+    .default-question-btn {
+      display: inline-block;
+      padding: 8px 14px;
+      margin: 4px 6px 4px 0;
+      background: white;
+      border: 1px solid #e0e7ff;
+      border-radius: 20px;
+      font-size: 13px;
+      color: #667eea;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .default-question-btn:hover {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-color: transparent;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
     }
 
     #ai-user-input {
@@ -723,6 +764,19 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
       } finally {
         sendBtn.disabled = false;
       }
+    }
+
+    // 点击默认问题按钮
+    function askDefaultQuestion(question) {
+      if (!aiApiKey) {
+        alert('请先输入并保存 DeepSeek API Key');
+        document.getElementById('ai-api-key-section').style.display = 'flex';
+        return;
+      }
+      document.getElementById('ai-user-input').value = question;
+      // 隐藏默认问题区域
+      document.getElementById('ai-default-questions').style.display = 'none';
+      sendMessage();
     }
 
     // 支持回车发送消息
