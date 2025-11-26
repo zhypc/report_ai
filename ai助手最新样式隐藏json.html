@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>空 HTML</title>
+  <title>AI 智能助手</title>
 </head>
 
 <body>
@@ -102,13 +102,6 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
       </div>
     </div>
 
-    <!-- 加载指示器（目前未使用） -->
-    <div id="loading-indicator"
-      class="hidden absolute bottom-20 left-1/2 transform -translate-x-1/2 flex items-center space-x-2">
-      <div class="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]"></div>
-      <div class="w-2 h-2 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]"></div>
-      <div class="w-2 h-2 rounded-full bg-primary animate-bounce"></div>
-    </div>
   </div>
 
   <!-- ==================== CSS样式部分 ==================== -->
@@ -196,8 +189,6 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
 
     /* ---------- 聊天开启按钮样式 ---------- */
     #ai-chat-toggle {
-      bottom: 20px;
-      right: 20px;
       width: 60px;
       height: 60px;
       border-radius: 50%;  /* 圆形按钮 */
@@ -251,18 +242,6 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
       height: 100%;
       max-height: 100%;
       border-radius: 0;
-    }
-
-    /* 滑入动画（备用） */
-    @keyframes slideUp {
-      from {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
     }
 
     /* ---------- 聊天窗口头部样式 ---------- */
@@ -620,6 +599,22 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
 
   <!-- ==================== JavaScript逻辑部分 ==================== -->
   <script>
+    // ========== 常量配置 ==========
+    const API_CONFIG = {
+      BASE_URL: 'https://api.deepseek.com/v1',
+      MODEL: 'deepseek-chat',
+      MAX_TOKENS: 2000,
+      TEMPERATURE: 0.7
+    };
+
+    // 消息长度限制
+    const MAX_MESSAGE_LENGTH = 2000;
+    // 聊天历史最大条数（不包含系统消息）
+    const MAX_CHAT_HISTORY = 50;
+
+    // 欢迎消息
+    const WELCOME_MESSAGE = '您好！我是AI助手，可以帮助您解答关于这份空间转录组分析报告的问题。有什么我可以帮您的吗？';
+
     // ========== 全局变量初始化 ==========
 
     // 解码隐藏的JSON数据（Base64 -> UTF-8 -> JSON对象）
@@ -631,9 +626,8 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
 
     // 聊天历史记录数组，用于维护对话上下文
     let chatHistory = [];
-
-    // 加载指示器元素引用
-    const loadingIndicator = document.getElementById('loading-indicator');
+    // 标记是否已初始化
+    let isInitialized = false;
 
     // ========== 页面结果展示相关 ==========
 
@@ -666,10 +660,18 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
       const displayDiv = document.getElementById('ai-result-display');
       const paragraph = document.createElement('div');
       paragraph.className = 'ai-result-paragraph';
-      paragraph.innerHTML = `
-        <div class="result-title">${question}</div>
-        <div class="result-content">${content}</div>
-      `;
+
+      // 使用 textContent 防止 XSS 攻击
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'result-title';
+      titleDiv.textContent = question;
+
+      const contentDiv = document.createElement('div');
+      contentDiv.className = 'result-content';
+      contentDiv.textContent = content;
+
+      paragraph.appendChild(titleDiv);
+      paragraph.appendChild(contentDiv);
       displayDiv.appendChild(paragraph);
       // 平滑滚动到结果位置
       paragraph.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -689,7 +691,7 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
 
       try {
         // 调用DeepSeek的模型列表接口作为验证
-        const response = await fetch('https://api.deepseek.com/v1/models', {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/models`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${apiKey}`,
@@ -715,23 +717,6 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
           valid: false,
           message: `请求失败: ${error.message || '网络错误或服务不可用'}`
         };
-      }
-    }
-
-    /**
-     * 判断变量是否为有效的JSON格式字符串
-     * @param {any} variable - 需要判断的变量
-     * @returns {boolean} 是否为有效JSON
-     */
-    function isJsonString(variable) {
-      if (typeof variable !== 'string') {
-        return false;
-      }
-      try {
-        const parsed = JSON.parse(variable);
-        return typeof parsed === 'object' && parsed !== null;
-      } catch (error) {
-        return false;
       }
     }
 
@@ -776,6 +761,23 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
       return history;
     }
 
+    /**
+     * 初始化聊天（公共逻辑）
+     * 设置聊天历史、隐藏API Key区域、显示欢迎消息
+     */
+    function initializeChat() {
+      if (isInitialized) return;
+
+      // 初始化聊天历史（直接赋值而非concat，避免重复）
+      chatHistory = initializeChatHistory();
+      isInitialized = true;
+
+      // 隐藏API Key输入区域
+      document.getElementById('ai-api-key-section').style.display = 'none';
+      // 显示欢迎消息
+      addMessage(WELCOME_MESSAGE, 'bot');
+    }
+
     // ========== 页面加载事件 ==========
 
     /**
@@ -784,14 +786,10 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
      */
     window.addEventListener('load', async function () {
       if (aiApiKey) {
+        updateApiKeyStatus("正在验证API密钥...", true);
         const result = await checkDeepSeekApiKey(aiApiKey);
         if (result.valid) {
-          // 初始化聊天历史
-          chatHistory = chatHistory.concat(initializeChatHistory());
-          // 隐藏API Key输入区域
-          document.getElementById('ai-api-key-section').style.display = 'none';
-          // 显示欢迎消息
-          addMessage('您好！我是AI助手，可以帮助您解答关于这份空间转录组分析报告的问题。有什么我可以帮您的吗？', 'bot');
+          initializeChat();
         } else {
           updateApiKeyStatus(result.message, false);
         }
@@ -841,6 +839,7 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
      */
     async function saveApiKey() {
       const apiKeyInput = document.getElementById('ai-api-key');
+      const saveBtn = apiKeyInput.nextElementSibling;
       aiApiKey = apiKeyInput.value.trim();
 
       if (!aiApiKey) {
@@ -848,16 +847,22 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
         return;
       }
 
+      // 显示验证中状态
+      saveBtn.disabled = true;
+      apiKeyInput.disabled = true;
+      updateApiKeyStatus("正在验证API密钥...", true);
+
       const result = await checkDeepSeekApiKey(aiApiKey);
+
+      // 恢复按钮状态
+      saveBtn.disabled = false;
+      apiKeyInput.disabled = false;
+
       if (result.valid) {
         // 保存到localStorage
         localStorage.setItem('deepseek_api_key', aiApiKey);
-        // 初始化聊天历史
-        chatHistory = chatHistory.concat(initializeChatHistory());
-        // 隐藏API Key输入区域
-        document.getElementById('ai-api-key-section').style.display = 'none';
-        // 显示欢迎消息
-        addMessage('您好！我是AI助手，可以帮助您解答关于这份空间转录组分析报告的问题。有什么我可以帮您的吗？', 'bot');
+        // 初始化聊天
+        initializeChat();
       } else {
         updateApiKeyStatus(result.message, false);
       }
@@ -911,6 +916,45 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
     }
 
     /**
+     * 将错误信息转换为友好的中文提示
+     * @param {Error} error - 错误对象
+     * @returns {string} 友好的错误提示
+     */
+    function getFriendlyErrorMessage(error) {
+      const msg = error.message || '';
+      if (msg.includes('401') || msg.includes('Unauthorized')) {
+        return 'API密钥无效或已过期，请重新输入';
+      } else if (msg.includes('429')) {
+        return '请求过于频繁，请稍后再试';
+      } else if (msg.includes('500') || msg.includes('502') || msg.includes('503')) {
+        return '服务器暂时不可用，请稍后再试';
+      } else if (msg.includes('network') || msg.includes('Failed to fetch')) {
+        return '网络连接失败，请检查网络后重试';
+      } else if (msg.includes('timeout')) {
+        return '请求超时，请稍后再试';
+      }
+      return '发生错误，请稍后再试';
+    }
+
+    /**
+     * 限制聊天历史长度，保留系统消息
+     */
+    function trimChatHistory() {
+      // 找出系统消息的数量
+      const systemMsgCount = chatHistory.filter(m => m.role === 'system').length;
+      // 非系统消息数量
+      const nonSystemMsgCount = chatHistory.length - systemMsgCount;
+
+      if (nonSystemMsgCount > MAX_CHAT_HISTORY) {
+        // 保留系统消息和最新的对话
+        const systemMsgs = chatHistory.filter(m => m.role === 'system');
+        const nonSystemMsgs = chatHistory.filter(m => m.role !== 'system');
+        // 保留最新的 MAX_CHAT_HISTORY 条非系统消息
+        chatHistory = [...systemMsgs, ...nonSystemMsgs.slice(-MAX_CHAT_HISTORY)];
+      }
+    }
+
+    /**
      * 发送消息到DeepSeek API
      * 主要的聊天逻辑函数
      */
@@ -930,6 +974,12 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
         return;
       }
 
+      // 检查消息长度
+      if (message.length > MAX_MESSAGE_LENGTH) {
+        addMessage(`消息过长，请限制在 ${MAX_MESSAGE_LENGTH} 个字符以内`, 'error');
+        return;
+      }
+
       // 添加用户消息到界面和历史记录
       addMessage(message, 'user');
       chatHistory.push({
@@ -943,26 +993,27 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
       // 清空输入框
       userInput.value = '';
 
-      // 禁用发送按钮，防止重复发送
+      // 禁用发送按钮和输入框，防止重复发送
       const sendBtn = document.getElementById('ai-send-btn');
       sendBtn.disabled = true;
+      userInput.disabled = true;
 
       // 显示加载中消息
       const loadingMsg = addMessage('正在思考中...', 'loading');
 
       try {
         // 调用DeepSeek API
-        const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        const response = await fetch(`${API_CONFIG.BASE_URL}/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': 'Bearer ' + aiApiKey
           },
           body: JSON.stringify({
-            model: 'deepseek-chat',
+            model: API_CONFIG.MODEL,
             messages: chatHistory,
-            temperature: 0.7,  // 控制回答的随机性
-            max_tokens: 2000   // 最大返回token数
+            temperature: API_CONFIG.TEMPERATURE,
+            max_tokens: API_CONFIG.MAX_TOKENS
           })
         });
 
@@ -983,6 +1034,9 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
           content: assistantMessage
         });
 
+        // 限制聊天历史长度
+        trimChatHistory();
+
         // 根据问题关键词将AI回答展示到页面主体
         displayResultByQuestion(currentQuestion, assistantMessage);
 
@@ -995,8 +1049,9 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
           document.getElementById('loading-message').remove();
         }
 
-        // 显示错误消息
-        addMessage('错误: ' + error.message, 'error');
+        // 显示友好的错误消息
+        const friendlyMsg = getFriendlyErrorMessage(error);
+        addMessage(friendlyMsg, 'error');
         console.error('DeepSeek API Error:', error);
 
         // 如果是认证错误，重新显示API Key输入区域
@@ -1004,10 +1059,13 @@ ewogICAgInN5c3RlbSI6ICLkvaDmmK/kuIDkuKrkuJPkuJrnmoTliqnmiYvvvIzkuIvpnaLmmK/mnKzm
           document.getElementById('ai-api-key-section').style.display = 'flex';
           localStorage.removeItem('deepseek_api_key');
           aiApiKey = '';
+          isInitialized = false;
         }
       } finally {
-        // 恢复发送按钮
+        // 恢复发送按钮和输入框
         sendBtn.disabled = false;
+        userInput.disabled = false;
+        userInput.focus();
       }
     }
 
