@@ -1,0 +1,249 @@
+{
+  "tools_system_prompt": "你是一个专业的生物信息学分析助手。以下是平台支持的所有分析模块，当用户的报告中缺少某些分析，或用户提出的问题涉及未进行的分析时，你可以根据用户需求推荐合适的分析模块。",
+
+  "recommendation_instructions": "推荐分析时请遵循以下原则：\n1. 根据用户的研究目的和数据类型推荐最相关的分析\n2. 简要说明推荐该分析的理由和预期收获\n3. 如果多个分析模块相关，按优先级排序推荐\n4. 对于已完成的分析，不要重复推荐",
+
+  "单细胞RNA分析工具": {
+    "基础处理模块": {
+      "loadData": {
+        "description": "数据加载模块，汇集 Cell Ranger 输出或已建 Seurat/RDS 对象，自动识别表达矩阵并补充样本元数据",
+        "recommendation": "如果您有新的单细胞数据需要分析，可以通过此模块导入数据开始分析流程"
+      },
+      "qcData": {
+        "description": "质量控制模块，依据线粒体比例、基因/UMI 复杂度等指标评估单细胞质量，剔除低质量细胞",
+        "recommendation": "建议在正式分析前进行质控，确保后续分析基于高质量数据"
+      },
+      "preprocessData": {
+        "description": "数据预处理模块，执行标准化、筛选高变基因、回归协变量并缩放表达矩阵",
+        "recommendation": "数据预处理是下游分析的基础，建议完成此步骤以获得稳定的表达基础"
+      },
+      "pcaData": {
+        "description": "PCA降维模块，在高变基因上运行主成分分析，评估可用于下游分析的主成分数量",
+        "recommendation": "PCA分析有助于理解数据的整体结构和变异来源"
+      },
+      "integrateData": {
+        "description": "批次整合模块，应用 Harmony、CCA 等策略校正多样本或多批次的批次效应",
+        "recommendation": "如果您的数据包含多个样本或批次，建议进行批次整合以消除技术噪音"
+      },
+      "clusterReductionData": {
+        "description": "聚类降维模块，构建 KNN 图执行聚类，计算 UMAP/t-SNE 可视化嵌入",
+        "recommendation": "聚类分析可以识别不同的细胞群体，是细胞类型注释的基础"
+      }
+    },
+    "细胞注释模块": {
+      "autoAnnotationData": {
+        "description": "自动注释模块，使用 SingleR 或 angrycell 根据表达轮廓自动注释细胞类型",
+        "recommendation": "如果您需要快速了解数据中的细胞类型组成，建议使用自动注释功能"
+      },
+      "setFinalAnnoData": {
+        "description": "最终注释模块，综合自动注释与人工审阅固化最终细胞标签，可输出差异表达和富集结果",
+        "recommendation": "建议在自动注释后进行人工审核，确保细胞类型注释的准确性"
+      },
+      "celltypist": {
+        "description": "CellTypist注释模块，利用预训练模型进行补充注释，支持多模型投票",
+        "recommendation": "如果需要更精细的免疫细胞分型，建议使用 CellTypist 进行补充注释"
+      },
+      "subclusterAnno": {
+        "description": "亚群分析模块，针对指定主类细胞执行二次聚类与注释，解析更细粒度的亚群结构",
+        "recommendation": "如果您对某类细胞（如T细胞、巨噬细胞）感兴趣，建议进行亚群细分分析"
+      },
+      "subCtDegEnrich": {
+        "description": "亚群差异富集模块，在子群层面开展差异表达与功能富集分析",
+        "recommendation": "亚群分析后，建议进行差异和富集分析以阐明亚群间的功能差异"
+      }
+    },
+    "轨迹分析模块": {
+      "Cytotrace": {
+        "description": "发育潜能分析模块，运行 CytoTRACE 推断细胞发育潜能和分化得分",
+        "recommendation": "如果您想了解细胞的发育状态和分化潜能，建议进行 CytoTRACE 分析"
+      },
+      "monocle2": {
+        "description": "拟时序分析模块，利用 Monocle2 构建拟时轨迹，输出轨迹图和伪时间排序",
+        "recommendation": "如果您想研究细胞的分化过程或发育轨迹，建议使用 Monocle2 进行拟时序分析"
+      },
+      "slingshot": {
+        "description": "多分支轨迹模块，使用 Slingshot 推断多分支发育轨迹",
+        "recommendation": "如果您的数据存在多个分化方向，建议使用 Slingshot 分析分支轨迹"
+      },
+      "velocity": {
+        "description": "RNA速率分析模块，整合 scVelo 速度矩阵可视化瞬时转录方向",
+        "recommendation": "如果您想了解细胞的瞬时转录动态和分化方向，建议进行 RNA velocity 分析"
+      }
+    },
+    "细胞通讯模块": {
+      "CellChat": {
+        "description": "CellChat通讯分析模块，分析细胞间配体-受体通讯网络",
+        "recommendation": "如果您想了解不同细胞类型之间的相互作用，建议进行 CellChat 细胞通讯分析"
+      },
+      "CellphoneDB": {
+        "description": "CellphoneDB通讯分析模块，解析细胞-细胞通讯关系，输出配体-受体矩阵",
+        "recommendation": "CellphoneDB 可以提供详细的配体-受体相互作用信息，建议用于深入研究细胞通讯"
+      },
+      "NicheNet": {
+        "description": "NicheNet信号分析模块，推断配体-受体-靶基因链路",
+        "recommendation": "如果您想了解上游信号如何影响下游基因表达，建议使用 NicheNet 分析"
+      }
+    },
+    "调控网络模块": {
+      "SCENIC": {
+        "description": "转录调控网络模块，构建 regulon 调控网络，输出转录因子活性",
+        "recommendation": "如果您想了解关键转录因子及其调控网络，建议进行 SCENIC 分析"
+      },
+      "hdWGCNA": {
+        "description": "共表达网络模块，构建高维 WGCNA 网络识别基因模块",
+        "recommendation": "如果您想识别共表达基因模块及其与表型的关联，建议进行 hdWGCNA 分析"
+      },
+      "CellModule": {
+        "description": "模块化分析，在时间/样本/群体维度识别共表达模块",
+        "recommendation": "如果您想在不同维度上识别基因表达模块，建议使用 CellModule 分析"
+      },
+      "CoVarNet": {
+        "description": "协变网络模块，构建协同变异网络比对不同样本的共变结构",
+        "recommendation": "如果您想比较不同条件下基因的协同变化模式，建议进行 CoVarNet 分析"
+      },
+      "MetaProgram": {
+        "description": "元程序识别模块，汇总跨样本共享的表达模块",
+        "recommendation": "如果您想识别跨样本保守的表达程序，建议进行 MetaProgram 分析"
+      }
+    },
+    "临床分析模块": {
+      "inferCNV": {
+        "description": "拷贝数变异分析模块，推断单细胞拷贝数变异",
+        "recommendation": "如果您想识别肿瘤细胞或检测基因组拷贝数改变，建议进行 inferCNV 分析"
+      },
+      "Asgard": {
+        "description": "免疫微环境分析模块，比较肿瘤与正常样本的细胞状态和治疗反应",
+        "recommendation": "如果您想评估肿瘤免疫微环境和潜在治疗靶点，建议进行 Asgard 分析"
+      },
+      "ScPharm": {
+        "description": "药物反应分析模块，评估潜在疗法和药物敏感性",
+        "recommendation": "如果您想预测药物敏感性或筛选潜在治疗方案，建议进行 ScPharm 分析"
+      },
+      "scRepertoire": {
+        "description": "免疫库分析模块，分析 TCR/BCR 重排信息和克隆扩增",
+        "recommendation": "如果您有配套的 TCR/BCR 数据，建议进行免疫库分析以了解克隆扩增情况"
+      }
+    },
+    "数据处理模块": {
+      "DecontX": {
+        "description": "去污染模块，对环境 RNA 进行去噪处理",
+        "recommendation": "如果您的数据存在较高的环境污染，建议使用 DecontX 进行去污染处理"
+      },
+      "moveDoublet": {
+        "description": "双细胞去除模块，检测并移除潜在的双细胞",
+        "recommendation": "如果您担心数据中存在双细胞，建议进行双细胞检测和去除"
+      },
+      "seu2omni": {
+        "description": "数据转换模块，将 Seurat 对象转换为 OmniViewer 兼容格式",
+        "recommendation": "如果您需要在 OmniViewer 平台上浏览数据，可以使用此模块进行格式转换"
+      }
+    }
+  },
+
+  "单细胞空间转录组分析工具": {
+    "基础处理模块": {
+      "loadData": {
+        "description": "空间数据加载模块，载入 Visium、Stereo-seq 等平台数据",
+        "recommendation": "如果您有新的空间转录组数据，可以通过此模块导入并开始分析"
+      },
+      "qcData": {
+        "description": "空间数据质控模块，执行 spot 过滤和质量评估",
+        "recommendation": "建议对空间数据进行质控，确保分析基于高质量的 spot"
+      },
+      "preprocessData": {
+        "description": "空间数据预处理模块，执行标准化和高变基因筛选",
+        "recommendation": "数据预处理是空间分析的基础步骤"
+      },
+      "pcaData": {
+        "description": "空间PCA模块，计算主成分嵌入",
+        "recommendation": "PCA分析有助于理解空间数据的整体结构"
+      },
+      "integrateData": {
+        "description": "空间批次整合模块，校正多切片批次效应",
+        "recommendation": "如果您有多个切片数据，建议进行批次整合"
+      },
+      "clusterReductionData": {
+        "description": "空间聚类模块，执行聚类和降维可视化",
+        "recommendation": "聚类分析可以识别空间上不同的区域或细胞群体"
+      }
+    },
+    "空间聚类模块": {
+      "BANKSY": {
+        "description": "BANKSY空间聚类模块，结合表达与邻域特征识别空间社区",
+        "recommendation": "如果您想更好地利用空间邻域信息进行聚类，建议使用 BANKSY 算法"
+      },
+      "cellcharter": {
+        "description": "空间社区识别模块，识别空间社区结构并比较不同样本的组成",
+        "recommendation": "如果您想识别和比较不同样本中的空间社区，建议使用 cellcharter"
+      },
+      "split": {
+        "description": "切片拆分模块，将大型切片拆分为多个 ROI",
+        "recommendation": "如果您的切片较大或需要分区域分析，建议先进行切片拆分"
+      },
+      "roidefine": {
+        "description": "ROI定义模块，从 CSV 导入或手工定义感兴趣区域",
+        "recommendation": "如果您想对特定区域进行定向分析，建议先定义 ROI 边界"
+      }
+    },
+    "细胞注释与去卷积模块": {
+      "labelTransfer": {
+        "description": "标签迁移模块，将 scRNA 注释迁移到空间数据",
+        "recommendation": "如果您有配套的单细胞数据，建议使用标签迁移进行空间细胞类型注释"
+      },
+      "sciBet": {
+        "description": "sciBet注释模块，快速进行 spot 级细胞类型注释",
+        "recommendation": "如果需要快速注释空间数据，可以使用 sciBet"
+      },
+      "stScore": {
+        "description": "空间评分模块，计算 spot 级功能得分",
+        "recommendation": "如果您想评估特定细胞类型或功能在空间上的分布，建议使用 stScore"
+      },
+      "SPOTlight": {
+        "description": "SPOTlight去卷积模块，执行空间细胞成分去卷积",
+        "recommendation": "如果您想了解每个 spot 的细胞类型组成，建议进行 SPOTlight 去卷积分析"
+      },
+      "stRCTD": {
+        "description": "RCTD去卷积模块，进行空间细胞成分预测",
+        "recommendation": "RCTD 是另一种可靠的空间去卷积方法，建议用于细胞成分解析"
+      },
+      "stRedeconve": {
+        "description": "Redeconve去卷积模块，多任务模式进行空间去卷积",
+        "recommendation": "如果您需要更灵活的去卷积分析，可以使用 Redeconve"
+      }
+    },
+    "空间微环境模块": {
+      "BuildNicheAssay": {
+        "description": "Niche构建模块，将邻近 spot 聚合为微环境单元",
+        "recommendation": "如果您想研究空间微环境组成，建议先构建 Niche assay"
+      },
+      "Redeconve": {
+        "description": "区域去卷积模块，对 ROI 或 Niche 进行细胞成分汇总",
+        "recommendation": "构建 Niche 后，可以使用此模块进行区域级细胞成分分析"
+      },
+      "spotclean": {
+        "description": "SpotClean去污染模块，校正 Visium 等平台的背景污染",
+        "recommendation": "如果您的空间数据存在背景污染，建议使用 SpotClean 进行校正"
+      }
+    },
+    "空间通讯模块": {
+      "CellChat2": {
+        "description": "空间CellChat模块，结合空间位置信息分析区域间通讯差异",
+        "recommendation": "如果您想了解空间上不同区域之间的细胞通讯，建议进行空间 CellChat 分析"
+      },
+      "CellphoneDB_ST": {
+        "description": "空间CellphoneDB模块，按 ROI 分组分析空间通讯",
+        "recommendation": "如果您想在空间背景下分析细胞通讯，建议使用空间版 CellphoneDB"
+      }
+    },
+    "空间轨迹与调控模块": {
+      "SpaTrack": {
+        "description": "空间轨迹追踪模块，预测细胞在组织中的迁移方向",
+        "recommendation": "如果您想了解细胞在组织中的迁移路径，建议进行 SpaTrack 分析"
+      },
+      "SpaGRN": {
+        "description": "空间调控网络模块，构建空间基因调控网络",
+        "recommendation": "如果您想了解空间上的基因调控关系，建议进行 SpaGRN 分析"
+      }
+    }
+  }
+}
