@@ -326,6 +326,128 @@ def load_context_by_report_id(report_id):
     return context_data
 
 
+# ==================== 工具提示词数据 ====================
+
+# 默认工具提示词数据
+DEFAULT_TOOLS_PROMPT = {
+    "tools_system_prompt": "你是一个专业的生物信息学分析助手。以下是平台支持的所有分析模块，当用户的报告中缺少某些分析，或用户提出的问题涉及未进行的分析时，你可以根据用户需求推荐合适的分析模块。",
+    "recommendation_instructions": "推荐分析时请遵循以下原则：\n1. 根据用户的研究目的和数据类型推荐最相关的分析\n2. 简要说明推荐该分析的理由和预期收获\n3. 如果多个分析模块相关，按优先级排序推荐\n4. 对于已完成的分析，不要重复推荐",
+    "tools_data": {}
+}
+
+# 工具提示词文件路径
+TOOLS_PROMPT_FILE_PATH = os.environ.get('TOOLS_PROMPT_FILE_PATH', 'tools_prompt.json')
+
+
+def load_tools_prompt_from_file():
+    """从文件加载工具提示词数据"""
+    if os.path.exists(TOOLS_PROMPT_FILE_PATH):
+        try:
+            with open(TOOLS_PROMPT_FILE_PATH, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Warning: Failed to load tools prompt file: {e}")
+    return DEFAULT_TOOLS_PROMPT
+
+
+def load_tools_prompt_from_mysql(prompt_id='default_tools_prompt'):
+    """从 MySQL 数据库加载工具提示词数据"""
+    if not db_engine:
+        print("MySQL connection not available")
+        return None
+
+    try:
+        with db_engine.connect() as conn:
+            query = text("""
+                SELECT tools_system_prompt, recommendation_instructions, tools_data
+                FROM tools_prompt
+                WHERE prompt_id = :prompt_id AND is_active = 1
+                LIMIT 1
+            """)
+            result = conn.execute(query, {"prompt_id": prompt_id}).fetchone()
+
+            if result:
+                tools_system_prompt, recommendation_instructions, tools_data = result
+
+                if isinstance(tools_data, str):
+                    tools_data = json.loads(tools_data)
+
+                return {
+                    "tools_system_prompt": tools_system_prompt or DEFAULT_TOOLS_PROMPT["tools_system_prompt"],
+                    "recommendation_instructions": recommendation_instructions or DEFAULT_TOOLS_PROMPT["recommendation_instructions"],
+                    "tools_data": tools_data or {}
+                }
+
+            return None
+
+    except Exception as e:
+        print(f"MySQL query error for tools_prompt: {e}")
+        return None
+
+
+def load_tools_prompt_from_sqlite(prompt_id='default_tools_prompt'):
+    """从 SQLite 数据库加载工具提示词数据"""
+    if not os.path.exists(SQLITE_PATH):
+        print(f"SQLite database not found: {SQLITE_PATH}")
+        return None
+
+    try:
+        conn = sqlite3.connect(SQLITE_PATH)
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT tools_system_prompt, recommendation_instructions, tools_data
+            FROM tools_prompt
+            WHERE prompt_id = ? AND is_active = 1
+            LIMIT 1
+        """, (prompt_id,))
+
+        result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            tools_system_prompt, recommendation_instructions, tools_data = result
+
+            if isinstance(tools_data, str):
+                tools_data = json.loads(tools_data)
+
+            return {
+                "tools_system_prompt": tools_system_prompt or DEFAULT_TOOLS_PROMPT["tools_system_prompt"],
+                "recommendation_instructions": recommendation_instructions or DEFAULT_TOOLS_PROMPT["recommendation_instructions"],
+                "tools_data": tools_data or {}
+            }
+
+        return None
+
+    except Exception as e:
+        print(f"SQLite query error for tools_prompt: {e}")
+        return None
+
+
+def load_tools_prompt(prompt_id='default_tools_prompt'):
+    """
+    加载工具提示词数据（统一入口）
+
+    Args:
+        prompt_id: 提示词ID，默认为 'default_tools_prompt'
+
+    Returns:
+        dict: 工具提示词数据
+    """
+    tools_prompt = None
+
+    if DB_TYPE == 'mysql':
+        tools_prompt = load_tools_prompt_from_mysql(prompt_id)
+    elif DB_TYPE == 'sqlite':
+        tools_prompt = load_tools_prompt_from_sqlite(prompt_id)
+
+    # 如果数据库中未找到，尝试从文件加载
+    if tools_prompt is None:
+        tools_prompt = load_tools_prompt_from_file()
+
+    return tools_prompt
+
+
 def decode_base64_context(base64_str):
     """
     解码 Base64 编码的上下文数据
@@ -442,6 +564,21 @@ def get_context():
         context_data = load_context_data()
 
     return jsonify(context_data)
+
+
+@app.route('/api/tools_prompt', methods=['GET'])
+@require_auth
+def get_tools_prompt():
+    """
+    获取工具提示词数据接口
+    返回平台支持的分析模块信息，用于向用户推荐分析
+
+    可选参数：
+    - prompt_id: 提示词ID，默认为 'default_tools_prompt'
+    """
+    prompt_id = request.args.get('prompt_id', 'default_tools_prompt')
+    tools_prompt = load_tools_prompt(prompt_id)
+    return jsonify(tools_prompt)
 
 
 @app.route('/api/chat', methods=['POST'])

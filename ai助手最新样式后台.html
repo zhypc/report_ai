@@ -76,9 +76,9 @@
         </div>
         <!-- 默认问题按钮列表 -->
         <div id="default-questions-content">
-          <div class="default-question-btn" onclick="askDefaultQuestion('这份报告分析了多少个细胞和基因？')">这份报告分析了多少个细胞和基因？</div>
           <div class="default-question-btn" onclick="askDefaultQuestion('报告中识别了哪些细胞类型？')">报告中识别了哪些细胞类型？</div>
           <div class="default-question-btn" onclick="askDefaultQuestion('请总结一下这份报告的主要发现')">请总结一下这份报告的主要发现</div>
+          <div class="default-question-btn" onclick="askDefaultQuestion('推荐后续的分析模块')">推荐后续的分析模块</div>
         </div>
       </div>
 
@@ -486,6 +486,8 @@
       CHAT_ENDPOINT: '/chat',
       // 获取上下文数据接口
       CONTEXT_ENDPOINT: '/context',
+      // 获取工具提示词接口
+      TOOLS_PROMPT_ENDPOINT: '/tools_prompt',
       // 健康检查接口
       HEALTH_ENDPOINT: '/health',
       // 验证秘钥接口
@@ -504,6 +506,7 @@
     let isInitialized = false;
     let isBackendConnected = false;
     let contextData = null;
+    let toolsPromptData = null;  // 工具提示词数据
     // 访问秘钥
     let accessKey = localStorage.getItem('ai_access_key') || '';
 
@@ -643,6 +646,33 @@
     }
 
     /**
+     * 从后台获取工具提示词数据
+     */
+    async function fetchToolsPromptData() {
+      try {
+        const url = `${API_CONFIG.BACKEND_URL}${API_CONFIG.TOOLS_PROMPT_ENDPOINT}`;
+
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: getAuthHeaders()
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('秘钥验证失败');
+        }
+
+        if (!response.ok) {
+          throw new Error('获取工具提示词数据失败');
+        }
+
+        return await response.json();
+      } catch (error) {
+        console.error('Fetch tools prompt data failed:', error);
+        throw error;
+      }
+    }
+
+    /**
      * 发送聊天消息到后台（流式响应）
      */
     async function sendChatToBackend(messages) {
@@ -724,16 +754,44 @@
     }
 
     // ========== 聊天历史初始化 ==========
+    /**
+     * 格式化工具数据为提示词文本
+     */
+    function formatToolsForPrompt(toolsData) {
+      if (!toolsData) return '';
+
+      let result = '';
+      for (const category in toolsData) {
+        result += `\n【${category}】\n`;
+        const modules = toolsData[category];
+        for (const moduleName in modules) {
+          const tools = modules[moduleName];
+          result += `  ${moduleName}:\n`;
+          for (const toolName in tools) {
+            const tool = tools[toolName];
+            result += `    - ${toolName}: ${tool.description}`;
+            if (tool.recommendation) {
+              result += ` (${tool.recommendation})`;
+            }
+            result += '\n';
+          }
+        }
+      }
+      return result;
+    }
+
     function initializeChatHistory() {
       if (!contextData) return [];
 
       const history = [];
 
-      // 构建完整的 system prompt（合并为一条消息，让指令更突出）
+      // 构建完整的 system prompt（合并报告数据和工具提示词）
       let systemContent = '';
 
-      // 1. 角色设定
-      if (contextData.system) {
+      // 1. 角色设定（优先使用工具提示词的系统提示，因为它更全面）
+      if (toolsPromptData && toolsPromptData.tools_system_prompt) {
+        systemContent += toolsPromptData.tools_system_prompt + '\n\n';
+      } else if (contextData.system) {
         systemContent += contextData.system + '\n\n';
       }
 
@@ -751,7 +809,20 @@
         }
       }
 
-      // 3. 回答指令（放在最后，强调格式要求）
+      // 3. 可用分析工具（来自 tools_prompt）
+      if (toolsPromptData && toolsPromptData.tools_data) {
+        systemContent += '=== 平台可用分析模块 ===\n';
+        systemContent += formatToolsForPrompt(toolsPromptData.tools_data);
+        systemContent += '\n';
+
+        // 添加推荐指令
+        if (toolsPromptData.recommendation_instructions) {
+          systemContent += '=== 分析推荐原则 ===\n';
+          systemContent += toolsPromptData.recommendation_instructions + '\n\n';
+        }
+      }
+
+      // 4. 回答指令（放在最后，强调格式要求）
       if (contextData.instructions) {
         systemContent += '=== 回答要求 ===\n';
         systemContent += contextData.instructions;
@@ -783,8 +854,14 @@
      */
     async function initializeConnection() {
       try {
-        // 获取上下文数据
-        contextData = await fetchContextData();
+        // 并行获取上下文数据和工具提示词
+        const [contextResult, toolsResult] = await Promise.all([
+          fetchContextData(),
+          fetchToolsPromptData()
+        ]);
+
+        contextData = contextResult;
+        toolsPromptData = toolsResult;
 
         // 初始化聊天
         isBackendConnected = true;
